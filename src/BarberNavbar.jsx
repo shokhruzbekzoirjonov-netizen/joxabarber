@@ -83,12 +83,12 @@ export default function BarberNavbar() {
 
   const [toast, setToast] = useState({ show: false, text: "" });
 
-  const loadBookings = useCallback(async (date) => {
+  const loadBookings = useCallback((date) => {
     setLoadingSlots(true);
     const key = "band-" + dateKey(date);
     try {
-      const result = await window.storage.get(key, true);
-      setBookings(result && result.value ? JSON.parse(result.value) : {});
+      const result = localStorage.getItem(key);
+      setBookings(result ? JSON.parse(result) : {});
     } catch (e) {
       setBookings({});
     }
@@ -134,8 +134,8 @@ export default function BarberNavbar() {
     try {
       let latest = {};
       try {
-        const result = await window.storage.get(key, true);
-        latest = result && result.value ? JSON.parse(result.value) : {};
+        const result = localStorage.getItem(key);
+        latest = result ? JSON.parse(result) : {};
       } catch (e) {
         latest = {};
       }
@@ -148,7 +148,7 @@ export default function BarberNavbar() {
       }
 
       latest[selectedTime] = { ism: ismVal, tel: telVal, ts: Date.now() };
-      await window.storage.set(key, JSON.stringify(latest), true);
+      localStorage.setItem(key, JSON.stringify(latest));
       setBookings(latest);
       closeModal();
       setToast({
