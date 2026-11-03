@@ -1,266 +1,279 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Scissors } from "lucide-react";
 
 const TELEGRAM_BOT_TOKEN = "8952129410:AAGCxdTKV9F9_Vb40vftG1qCSULsVBPiOMc";
 const TELEGRAM_CHAT_ID = "-5012396870";
 
+// ====== XIZMATLAR VA NARXLAR (shu yerdan o'zgartiring) ======
+const SERVICES = [
+  { name: "Soch olish", price: 55000 },
+  { name: "Kuyov bola style", price: 100, cur: "$" }, // dollarda
+  { name: "Soch bo'yash", price: 200000 },
+  { name: "Jingalak soch qilish", price: 300000 },
+  { name: "Depilyatsiya", price: 250000 },
+];
+
 const DOW = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Shan"];
 const MON = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"];
-const MON_FULL = [
-  "Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun",
-  "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr",
-];
-const SLOT_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+const MON_FULL = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
+const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
-const COLOR = {
-  charcoal: "#1C1B1A",
-  charcoal2: "#242220",
-  charcoal3: "#2E2B27",
-  cream: "#F3EDE3",
-  creamDim: "#c9c2b4",
-  gold: "#C9A227",
-  goldBright: "#E4BE3F",
-  green: "#3F7A5B",
-  greenBg: "rgba(63,122,91,0.14)",
-  greenBorder: "rgba(63,122,91,0.55)",
-  red: "#A6453A",
-  redBg: "rgba(166,69,58,0.14)",
-  redBorder: "rgba(166,69,58,0.55)",
+const C = {
+  bg: "#1C1B1A", card: "#242220", cream: "#F3EDE3", dim: "#c9c2b4",
+  gold: "#C9A227", goldB: "#E4BE3F", green: "#3F7A5B", red: "#A6453A",
+  greenBg: "rgba(63,122,91,0.14)", greenBd: "rgba(63,122,91,0.55)",
+  redBg: "rgba(166,69,58,0.14)", redBd: "rgba(166,69,58,0.55)",
 };
+const serif = "'Playfair Display', serif";
+const mono = "'Space Mono', monospace";
 
-function pad(n) {
-  return n < 10 ? "0" + n : "" + n;
-}
-function dateKey(d) {
-  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-}
+const pad = (n) => (n < 10 ? "0" + n : "" + n);
+const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const priceText = (s) => (!s.price ? "Narxi keyinroq" : s.cur === "$" ? "$" + s.price : s.price.toLocaleString("ru-RU") + " so'm");
+const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const digits = (t) => String(t).replace(/\D/g, "").slice(-9);
 
-async function sendTelegramNotification(text) {
+// Claude (window.storage) bo'lmasa, brauzer xotirasi ishlatiladi
+const store = {
+  async get(k) {
+    try {
+      if (window.storage) {
+        const r = await window.storage.get(k, true);
+        return r && r.value ? r.value : null;
+      }
+      return localStorage.getItem(k);
+    } catch (e) {
+      return null;
+    }
+  },
+  async set(k, v) {
+    if (window.storage) await window.storage.set(k, v, true);
+    else localStorage.setItem(k, v);
+  },
+};
+async function loadDay(d) {
+  const v = await store.get("band-" + dateKey(d));
   try {
-    const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    return v ? JSON.parse(v) : {};
+  } catch (e) {
+    return {};
+  }
+}
+const saveDay = (d, data) => store.set("band-" + dateKey(d), JSON.stringify(data));
+
+async function sendTelegram(text) {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: "HTML",
-      }),
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: "HTML" }),
     });
-    const data = await resp.json();
-    if (!data.ok) console.error("Telegram xatosi:", data.description);
+    const j = await r.json();
+    if (!j.ok) console.error("Telegram xatosi:", j.description);
   } catch (e) {
     console.error("Telegram xabari yuborilmadi:", e);
   }
 }
 
+const inputStyle = {
+  width: "100%", background: C.bg, border: "1px solid rgba(243,237,227,0.15)", borderRadius: 8,
+  padding: "11px 12px", color: C.cream, fontSize: 14.5, outline: "none", fontFamily: "inherit",
+};
+const labelStyle = {
+  display: "block", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.08em",
+  color: C.dim, marginBottom: 6,
+};
+const btn = (bg, color, border) => ({
+  flex: 1, padding: "12px 0", borderRadius: 8, border: border || "none", background: bg,
+  color, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+});
+
+function SectionLabel({ num, title }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+      <span style={{ fontFamily: mono, color: C.gold, fontSize: 13 }}>{num}</span>
+      <h2 style={{ fontFamily: serif, fontSize: 19, fontWeight: 700 }}>{title}</h2>
+    </div>
+  );
+}
+
+function Modal({ onClose, title, sub, children }) {
+  return (
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ position: "fixed", inset: 0, background: "rgba(10,9,8,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}
+    >
+      <div style={{ width: "100%", maxWidth: 360, maxHeight: "100%", overflowY: "auto", background: C.card, border: "1px solid rgba(201,162,39,0.35)", borderRadius: 14, padding: "26px 24px 22px" }}>
+        <h3 style={{ fontFamily: serif, fontSize: 20, marginBottom: 4 }}>{title}</h3>
+        <div style={{ fontFamily: mono, fontSize: 13, color: C.goldB, marginBottom: 20 }}>{sub}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function BarberNavbar() {
-  const today = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const dates = useMemo(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(t);
+      d.setDate(d.getDate() + i);
+      return d;
+    });
   }, []);
 
-  const dates = useMemo(() => {
-    const arr = [];
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(today);
-      d.setDate(d.getDate() + i);
-      arr.push(d);
-    }
-    return arr;
-  }, [today]);
-
-  const [selectedDate, setSelectedDate] = useState(dates[0]);
+  const [date, setDate] = useState(dates[0]);
   const [bookings, setBookings] = useState({});
-  const [loadingSlots, setLoadingSlots] = useState(true);
-
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedTime, setSelectedTime] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null); // { type: "book" | "cancel", time }
   const [ism, setIsm] = useState("");
   const [tel, setTel] = useState("");
-  const [errMsg, setErrMsg] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const [toast, setToast] = useState({ show: false, text: "" });
-
-  const loadBookings = useCallback((date) => {
-    setLoadingSlots(true);
-    const key = "band-" + dateKey(date);
-    try {
-      const result = localStorage.getItem(key);
-      setBookings(result ? JSON.parse(result) : {});
-    } catch (e) {
-      setBookings({});
-    }
-    setLoadingSlots(false);
-  }, []);
+  const [svc, setSvc] = useState(0);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
-    loadBookings(selectedDate);
-  }, [selectedDate, loadBookings]);
-
-  useEffect(() => {
-    if (!toast.show) return;
-    const t = setTimeout(() => setToast({ show: false, text: "" }), 3800);
-    return () => clearTimeout(t);
-  }, [toast.show]);
-
-  function openModal(timeStr) {
-    setSelectedTime(timeStr);
-    setIsm("");
-    setTel("");
-    setErrMsg("");
-    setModalOpen(true);
-  }
-
-  function closeModal() {
-    setModalOpen(false);
-    setSelectedTime(null);
-  }
-
-  async function handleConfirm() {
-    const ismVal = ism.trim();
-    const telVal = tel.trim();
-
-    if (!ismVal || !telVal) {
-      setErrMsg("Iltimos, ism va telefon raqamingizni kiriting.");
-      return;
-    }
-
-    setSubmitting(true);
-    setErrMsg("");
-    const key = "band-" + dateKey(selectedDate);
-
-    try {
-      let latest = {};
-      try {
-        const result = localStorage.getItem(key);
-        latest = result ? JSON.parse(result) : {};
-      } catch (e) {
-        latest = {};
+    let alive = true;
+    setLoading(true);
+    loadDay(date).then((b) => {
+      if (alive) {
+        setBookings(b);
+        setLoading(false);
       }
+    });
+    return () => { alive = false; };
+  }, [date]);
 
-      if (latest[selectedTime]) {
-        setErrMsg("Kechirasiz, bu vaqt hozirgina band qilindi. Boshqa vaqtni tanlang.");
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3800);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const dateLabel = `${date.getDate()} ${MON_FULL[date.getMonth()]}`;
+  const open = (type, time) => {
+    setModal({ type, time });
+    setIsm(""); setTel(""); setSvc(0); setErr("");
+  };
+  const close = () => setModal(null);
+
+  async function book() {
+    if (!ism.trim() || !tel.trim()) return setErr("Iltimos, ism va telefon raqamingizni kiriting.");
+    setBusy(true);
+    setErr("");
+    try {
+      const latest = await loadDay(date);
+      if (latest[modal.time]) {
         setBookings(latest);
-        setSubmitting(false);
+        setErr("Kechirasiz, bu vaqt hozirgina band qilindi. Boshqa vaqtni tanlang.");
         return;
       }
-
-      latest[selectedTime] = { ism: ismVal, tel: telVal, ts: Date.now() };
-      localStorage.setItem(key, JSON.stringify(latest));
+      const s = SERVICES[svc];
+      latest[modal.time] = { ism: ism.trim(), tel: tel.trim(), xizmat: s.name, narx: s.price, ts: Date.now() };
+      await saveDay(date, latest);
       setBookings(latest);
-      closeModal();
-      setToast({
-        show: true,
-        text: `Band qilindi! ✂️ ${selectedDate.getDate()} ${MON_FULL[selectedDate.getMonth()]}, soat ${selectedTime}`,
-      });
-
-      const sana = `${selectedDate.getDate()}-${MON_FULL[selectedDate.getMonth()]}`;
-      const notifText = `✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${ismVal}</b>\n📞 Telefon: ${telVal}\n📅 Sana: ${sana}\n🕐 Vaqt: ${selectedTime}`;
-      sendTelegramNotification(notifText);
+      setToast(`Band qilindi! ✂️ ${dateLabel}, soat ${modal.time}`);
+      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${modal.time}`);
+      close();
     } catch (e) {
-      setErrMsg("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
+      setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
     } finally {
-      setSubmitting(false);
+      setBusy(false);
+    }
+  }
+
+  async function cancel() {
+    setBusy(true);
+    setErr("");
+    try {
+      const latest = await loadDay(date);
+      const b = latest[modal.time];
+      if (!b) { setBookings(latest); return close(); }
+      if (!digits(tel) || digits(tel) !== digits(b.tel)) return setErr("Telefon raqam navbat olgan raqamga mos kelmadi.");
+      delete latest[modal.time];
+      await saveDay(date, latest);
+      setBookings(latest);
+      setToast(`Navbat bekor qilindi. ${modal.time} yana bo'sh.`);
+      sendTelegram(`❌ <b>Navbat bekor qilindi</b>\n\n👤 Mijoz: <b>${esc(b.ism)}</b>\n📞 Telefon: ${esc(b.tel)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${modal.time}`);
+      close();
+    } catch (e) {
+      setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <div style={{ background: COLOR.charcoal, color: COLOR.cream, minHeight: "100vh", fontFamily: "'Manrope', sans-serif", WebkitFontSmoothing: "antialiased" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
-        .bn-scroll::-webkit-scrollbar{ height:5px; }
-        .bn-scroll::-webkit-scrollbar-thumb{ background:rgba(243,237,227,0.15); border-radius:10px; }
-        .bn-slot:hover.bn-available{ transform:translateY(-2px); filter:brightness(1.15); }
-        .bn-btn:hover{ filter:brightness(1.1); }
-      `}</style>
+    <div style={{ background: C.bg, color: C.cream, minHeight: "100vh", fontFamily: "'Manrope', sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');`}</style>
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "28px 18px 80px" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, paddingBottom: 22, borderBottom: "1px solid rgba(243,237,227,0.12)", marginBottom: 28 }}>
-          <div style={{ width: 52, height: 52, borderRadius: "50%", border: `1.5px solid ${COLOR.gold}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Scissors size={24} color={COLOR.goldBright} strokeWidth={1.8} />
+          <div style={{ width: 52, height: 52, borderRadius: "50%", border: `1.5px solid ${C.gold}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Scissors size={24} color={C.goldB} strokeWidth={1.8} />
           </div>
           <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontWeight: 800, fontSize: 26, letterSpacing: "0.02em", lineHeight: 1.1, color: COLOR.cream }}>
-              Javohir Barber
-            </h1>
-            <p style={{ fontSize: 12.5, color: COLOR.gold, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 5, fontWeight: 600 }}>
+            <h1 style={{ fontFamily: serif, fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>Javohir Barber</h1>
+            <p style={{ fontSize: 12.5, color: C.gold, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 5, fontWeight: 600 }}>
               Barbershop &middot; Jizzax
             </p>
           </div>
         </div>
 
-        {/* Date section */}
+        {/* Prices */}
+        <SectionLabel num="✂" title="Xizmatlar va narxlar" />
+        <div style={{ background: C.card, border: "1px solid rgba(243,237,227,0.1)", borderRadius: 12, padding: "6px 16px", marginBottom: 28 }}>
+          {SERVICES.map((s, i) => (
+            <div key={s.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "11px 0", fontSize: 14.5, borderBottom: i < SERVICES.length - 1 ? "1px dashed rgba(243,237,227,0.14)" : "none" }}>
+              <span>{s.name}</span>
+              <b style={{ fontFamily: mono, fontSize: 13, color: C.goldB, whiteSpace: "nowrap" }}>{priceText(s)}</b>
+            </div>
+          ))}
+        </div>
+
+        {/* Date */}
         <SectionLabel num="01" title="Sanani tanlang" />
-        <div className="bn-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 14, marginBottom: 30 }}>
+        <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 14, marginBottom: 30 }}>
           {dates.map((d) => {
-            const active = dateKey(d) === dateKey(selectedDate);
+            const on = dateKey(d) === dateKey(date);
             return (
-              <div
-                key={dateKey(d)}
-                onClick={() => setSelectedDate(d)}
-                style={{
-                  flexShrink: 0,
-                  width: 64,
-                  padding: "12px 0 10px",
-                  background: active ? COLOR.gold : COLOR.charcoal2,
-                  border: `1px solid ${active ? COLOR.gold : "rgba(243,237,227,0.1)"}`,
-                  borderRadius: 10,
-                  textAlign: "center",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: active ? "#3a2e08" : COLOR.creamDim, marginBottom: 4 }}>
-                  {DOW[d.getDay()]}
-                </div>
-                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 700, color: active ? "#1C1B1A" : COLOR.cream }}>
-                  {d.getDate()}
-                </div>
-                <div style={{ fontSize: 10, color: active ? "#3a2e08" : COLOR.creamDim, marginTop: 2 }}>
-                  {MON[d.getMonth()]}
-                </div>
+              <div key={dateKey(d)} onClick={() => setDate(d)} style={{ flexShrink: 0, width: 64, padding: "12px 0 10px", textAlign: "center", cursor: "pointer", borderRadius: 10, background: on ? C.gold : C.card, border: `1px solid ${on ? C.gold : "rgba(243,237,227,0.1)"}` }}>
+                <div style={{ fontSize: 11, textTransform: "uppercase", color: on ? "#3a2e08" : C.dim, marginBottom: 4 }}>{DOW[d.getDay()]}</div>
+                <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 700, color: on ? C.bg : C.cream }}>{d.getDate()}</div>
+                <div style={{ fontSize: 10, color: on ? "#3a2e08" : C.dim, marginTop: 2 }}>{MON[d.getMonth()]}</div>
               </div>
             );
           })}
         </div>
 
-        {/* Time section */}
+        {/* Time */}
         <SectionLabel num="02" title="Vaqtni tanlang" />
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, color: COLOR.goldBright, marginBottom: 16 }}>
-          {selectedDate.getDate()} {MON_FULL[selectedDate.getMonth()]}, {DOW[selectedDate.getDay()]}
+        <div style={{ fontFamily: serif, fontSize: 17, color: C.goldB, marginBottom: 16 }}>
+          {dateLabel}, {DOW[date.getDay()]}
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 12 }}>
-          {SLOT_HOURS.map((h) => {
-            const timeStr = pad(h) + ":00";
-            const booked = !loadingSlots && bookings[timeStr];
-            const isLoading = loadingSlots;
+          {HOURS.map((h) => {
+            const t = pad(h) + ":00";
+            const booked = !loading && !!bookings[t];
+            const free = !loading && !booked;
             return (
               <div
-                key={timeStr}
-                className={`bn-slot ${!isLoading && !booked ? "bn-available" : ""}`}
-                onClick={() => !isLoading && !booked && openModal(timeStr)}
+                key={t}
+                onClick={() => !loading && open(booked ? "cancel" : "book", t)}
                 style={{
-                  position: "relative",
-                  borderRadius: 10,
-                  padding: "16px 6px 12px",
-                  textAlign: "center",
-                  cursor: isLoading ? "default" : booked ? "not-allowed" : "pointer",
-                  border: `1px solid ${isLoading ? "rgba(243,237,227,0.08)" : booked ? COLOR.redBorder : COLOR.greenBorder}`,
-                  background: isLoading ? COLOR.charcoal3 : booked ? COLOR.redBg : COLOR.greenBg,
-                  overflow: "hidden",
-                  transition: "transform 0.12s ease, filter 0.12s ease",
+                  position: "relative", overflow: "hidden", borderRadius: 10, padding: "16px 6px 12px", textAlign: "center",
+                  cursor: loading ? "default" : "pointer",
+                  background: loading ? "#2E2B27" : booked ? C.redBg : C.greenBg,
+                  border: `1px solid ${loading ? "rgba(243,237,227,0.08)" : booked ? C.redBd : C.greenBd}`,
                 }}
               >
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: isLoading ? "transparent" : booked ? COLOR.red : COLOR.green }} />
-                <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 16, fontWeight: 700, color: booked ? "#e3b5ae" : COLOR.cream }}>
-                  {timeStr}
-                </div>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: isLoading ? COLOR.creamDim : booked ? COLOR.red : COLOR.green }}>
-                  {isLoading ? "..." : booked ? "Band" : "Bo'sh"}
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: loading ? "transparent" : booked ? C.red : C.green }} />
+                <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: booked ? "#e3b5ae" : C.cream }}>{t}</div>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: loading ? C.dim : booked ? C.red : C.green }}>
+                  {loading ? "..." : free ? "Bo'sh" : "Band"}
                 </div>
               </div>
             );
@@ -268,118 +281,64 @@ export default function BarberNavbar() {
         </div>
 
         {/* Legend */}
-        <div style={{ display: "flex", gap: 20, marginTop: 22, paddingTop: 18, borderTop: "1px solid rgba(243,237,227,0.1)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLOR.creamDim }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: COLOR.green, display: "inline-block" }} />
-            Bo'sh vaqt
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: COLOR.creamDim }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: COLOR.red, display: "inline-block" }} />
-            Band qilingan
-          </div>
+        <div style={{ display: "flex", gap: 20, marginTop: 22, paddingTop: 18, borderTop: "1px solid rgba(243,237,227,0.1)", fontSize: 12.5, color: C.dim }}>
+          {[[C.green, "Bo'sh vaqt"], [C.red, "Band qilingan (bosib bekor qilish mumkin)"]].map(([c, l]) => (
+            <div key={l} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: c }} />
+              {l}
+            </div>
+          ))}
         </div>
-
-        <div style={{ textAlign: "center", marginTop: 40, fontSize: 11.5, color: "rgba(243,237,227,0.3)", letterSpacing: "0.04em" }}>
-          Javohir Barber &middot; Jizzax
-        </div>
+        <div style={{ textAlign: "center", marginTop: 40, fontSize: 11.5, color: "rgba(243,237,227,0.3)" }}>Javohir Barber &middot; Jizzax</div>
       </div>
 
-      {/* Modal */}
-      {modalOpen && (
-        <div
-          onClick={(e) => e.target === e.currentTarget && closeModal()}
-          style={{ position: "fixed", inset: 0, background: "rgba(10,9,8,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}
-        >
-          <div style={{ width: "100%", maxWidth: 360, background: COLOR.charcoal2, border: "1px solid rgba(201,162,39,0.35)", borderRadius: 14, padding: "26px 24px 22px", position: "relative" }}>
-            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, color: COLOR.cream, marginBottom: 4 }}>
-              Navbatni tasdiqlash
-            </h3>
-            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, color: COLOR.goldBright, marginBottom: 26 }}>
-              {selectedDate.getDate()} {MON_FULL[selectedDate.getMonth()]} — {selectedTime}
-            </div>
-
-            <div style={{ marginTop: 16, marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.08em", color: COLOR.creamDim, marginBottom: 6 }}>
-                Ismingiz
-              </label>
-              <input
-                type="text"
-                value={ism}
-                onChange={(e) => setIsm(e.target.value)}
-                placeholder="Masalan: Aziz"
-                style={{ width: "100%", background: COLOR.charcoal, border: "1px solid rgba(243,237,227,0.15)", borderRadius: 8, padding: "11px 12px", color: COLOR.cream, fontFamily: "'Manrope', sans-serif", fontSize: 14.5, outline: "none" }}
-              />
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.08em", color: COLOR.creamDim, marginBottom: 6 }}>
-                Telefon raqamingiz
-              </label>
-              <input
-                type="tel"
-                value={tel}
-                onChange={(e) => setTel(e.target.value)}
-                placeholder="+998 90 123 45 67"
-                style={{ width: "100%", background: COLOR.charcoal, border: "1px solid rgba(243,237,227,0.15)", borderRadius: 8, padding: "11px 12px", color: COLOR.cream, fontFamily: "'Manrope', sans-serif", fontSize: 14.5, outline: "none" }}
-              />
-            </div>
-
-            {errMsg && <div style={{ color: "#e07a6c", fontSize: 12.5, marginTop: 10 }}>{errMsg}</div>}
-
-            <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
-              <button
-                className="bn-btn"
-                onClick={closeModal}
-                style={{ flex: 1, padding: "12px 0", borderRadius: 8, border: "1px solid rgba(243,237,227,0.2)", background: "transparent", color: COLOR.creamDim, fontFamily: "'Manrope', sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
-              >
-                Bekor qilish
-              </button>
-              <button
-                className="bn-btn"
-                onClick={handleConfirm}
-                disabled={submitting}
-                style={{ flex: 1, padding: "12px 0", borderRadius: 8, border: "none", background: COLOR.gold, color: "#241c04", fontFamily: "'Manrope', sans-serif", fontWeight: 700, fontSize: 14, cursor: submitting ? "not-allowed" : "pointer", opacity: submitting ? 0.5 : 1 }}
-              >
-                {submitting ? "Yuborilmoqda..." : "Tasdiqlash"}
-              </button>
-            </div>
+      {/* Book modal */}
+      {modal?.type === "book" && (
+        <Modal onClose={close} title="Navbatni tasdiqlash" sub={`${dateLabel} — ${modal.time}`}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Ismingiz</label>
+            <input style={inputStyle} value={ism} onChange={(e) => setIsm(e.target.value)} placeholder="Masalan: Aziz" />
           </div>
-        </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Telefon raqamingiz</label>
+            <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 90 123 45 67" />
+          </div>
+          <label style={labelStyle}>Xizmat turi</label>
+          {SERVICES.map((s, i) => (
+            <div key={s.name} onClick={() => setSvc(i)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 8, cursor: "pointer", fontSize: 14, border: `1px solid ${i === svc ? C.gold : "rgba(243,237,227,0.15)"}`, background: i === svc ? "rgba(201,162,39,0.1)" : "transparent" }}>
+              <span>{s.name}</span>
+              <b style={{ fontFamily: mono, fontSize: 13, color: C.goldB, whiteSpace: "nowrap" }}>{priceText(s)}</b>
+            </div>
+          ))}
+          {err && <div style={{ color: "#e07a6c", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button style={btn("transparent", C.dim, "1px solid rgba(243,237,227,0.2)")} onClick={close}>Bekor qilish</button>
+            <button style={{ ...btn(C.gold, "#241c04"), opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={book}>
+              {busy ? "Yuborilmoqda..." : "Tasdiqlash"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Cancel modal */}
+      {modal?.type === "cancel" && (
+        <Modal onClose={close} title="Bu vaqt band" sub={`${dateLabel} — ${modal.time}`}>
+          <label style={labelStyle}>Navbatni bekor qilish uchun telefon raqamingiz</label>
+          <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 90 123 45 67" />
+          {err && <div style={{ color: "#e07a6c", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button style={btn("transparent", C.dim, "1px solid rgba(243,237,227,0.2)")} onClick={close}>Yopish</button>
+            <button style={{ ...btn(C.red, "#fff"), opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={cancel}>
+              Bekor qilish
+            </button>
+          </div>
+        </Modal>
       )}
 
       {/* Toast */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: `translateX(-50%) translateY(${toast.show ? 0 : 20}px)`,
-          background: COLOR.green,
-          color: "#fff",
-          padding: "14px 22px",
-          borderRadius: 10,
-          fontSize: 14,
-          fontWeight: 600,
-          opacity: toast.show ? 1 : 0,
-          pointerEvents: "none",
-          transition: "all 0.25s ease",
-          zIndex: 60,
-          boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-          textAlign: "center",
-          maxWidth: "90vw",
-        }}
-      >
-        {toast.text}
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: `translateX(-50%) translateY(${toast ? 0 : 20}px)`, opacity: toast ? 1 : 0, transition: "all .25s ease", pointerEvents: "none", zIndex: 60, background: C.green, color: "#fff", padding: "14px 22px", borderRadius: 10, fontSize: 14, fontWeight: 600, textAlign: "center", maxWidth: "90vw", boxShadow: "0 8px 30px rgba(0,0,0,0.4)" }}>
+        {toast}
       </div>
-    </div>
-  );
-}
-
-function SectionLabel({ num, title }) {
-  return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-      <span style={{ fontFamily: "'Space Mono', monospace", color: COLOR.gold, fontSize: 13 }}>{num}</span>
-      <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 19, fontWeight: 700, color: COLOR.cream }}>{title}</h2>
     </div>
   );
 }
