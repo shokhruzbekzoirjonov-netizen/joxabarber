@@ -6,11 +6,11 @@ const TELEGRAM_CHAT_ID = "-5012396870";
 
 // ====== XIZMATLAR VA NARXLAR (shu yerdan o'zgartiring) ======
 const SERVICES = [
-  { name: "Soch olish", price: 55000 },
+  { name: "Soch olish", price: 100000 },
+  { name: "Yosh bolalarga soch olish", price: 70000 },
   { name: "Kuyov bola style", price: 100, cur: "$" }, // dollarda
-  { name: "Soch bo'yash", price: 200000 },
-  { name: "Jingalak soch qilish", price: 300000 },
-  { name: "Depilyatsiya", price: 250000 },
+  { name: "Soch bo'yash", price: 50000 },
+  { name: "Jingalak soch qilish", price: 500000 },
 ];
 
 const DOW = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Shan"];
