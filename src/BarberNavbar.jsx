@@ -216,7 +216,7 @@ export default function BarberNavbar() {
             <Scissors size={24} color={C.goldB} strokeWidth={1.8} />
           </div>
           <div>
-            <h1 style={{ fontFamily: serif, fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>Javohir Barber</h1>
+            <h1 style={{ fontFamily: serif, fontWeight: 800, fontSize: 26, lineHeight: 1.1 }}>Joxa Barber</h1>
             <p style={{ fontSize: 12.5, color: C.gold, letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 5, fontWeight: 600 }}>
               Barbershop &middot; Jizzax
             </p>
@@ -289,7 +289,7 @@ export default function BarberNavbar() {
             </div>
           ))}
         </div>
-        <div style={{ textAlign: "center", marginTop: 40, fontSize: 11.5, color: "rgba(243,237,227,0.3)" }}>Javohir Barber &middot; Jizzax</div>
+        <div style={{ textAlign: "center", marginTop: 40, fontSize: 11.5, color: "rgba(243,237,227,0.3)" }}>Joxa Barber &middot; Jizzax</div>
       </div>
 
       {/* Book modal */}
