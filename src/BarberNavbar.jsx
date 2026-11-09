@@ -4,11 +4,11 @@ import { Scissors } from "lucide-react";
 const TELEGRAM_BOT_TOKEN = "8952129410:AAGCxdTKV9F9_Vb40vftG1qCSULsVBPiOMc";
 const TELEGRAM_CHAT_ID = "-5012396870";
 
-// ====== XIZMATLAR VA NARXLAR (shu yerdan o'zgartiring) ======
+// ====== XIZMATLAR VA NARXLAR ======
 const SERVICES = [
   { name: "Soch olish", price: 100000 },
   { name: "Yosh bolalarga soch olish", price: 70000 },
-  { name: "Kuyov bola style", price: 100, cur: "$" }, // dollarda
+  { name: "Kuyov bola style", price: 100, cur: "$" },
   { name: "Soch bo'yash", price: 50000 },
   { name: "Jingalak soch qilish", price: 500000 },
 ];
@@ -16,7 +16,7 @@ const SERVICES = [
 const DOW = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Shan"];
 const MON = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"];
 const MON_FULL = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"];
-const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 
 const C = {
   bg: "#1C1B1A", card: "#242220", cream: "#F3EDE3", dim: "#c9c2b4",
@@ -33,7 +33,6 @@ const priceText = (s) => (!s.price ? "Narxi keyinroq" : s.cur === "$" ? "$" + s.
 const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const digits = (t) => String(t).replace(/\D/g, "").slice(-9);
 
-// Claude (window.storage) bo'lmasa, brauzer xotirasi ishlatiladi
 const store = {
   async get(k) {
     try {
@@ -51,6 +50,7 @@ const store = {
     else localStorage.setItem(k, v);
   },
 };
+
 async function loadDay(d) {
   const v = await store.get("band-" + dateKey(d));
   try {
@@ -126,9 +126,10 @@ export default function BarberNavbar() {
   const [date, setDate] = useState(dates[0]);
   const [bookings, setBookings] = useState({});
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // { type: "book" | "cancel", time }
+  const [modal, setModal] = useState(null);
   const [ism, setIsm] = useState("");
   const [tel, setTel] = useState("");
+  const [odamSoni, setOdamSoni] = useState(1);
   const [svc, setSvc] = useState(0);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,12 +156,14 @@ export default function BarberNavbar() {
   const dateLabel = `${date.getDate()} ${MON_FULL[date.getMonth()]}`;
   const open = (type, time) => {
     setModal({ type, time });
-    setIsm(""); setTel(""); setSvc(0); setErr("");
+    setIsm(""); setTel(""); setOdamSoni(1); setSvc(0); setErr("");
   };
   const close = () => setModal(null);
 
   async function book() {
     if (!ism.trim() || !tel.trim()) return setErr("Iltimos, ism va telefon raqamingizni kiriting.");
+    if (!odamSoni || odamSoni < 1) return setErr("Iltimos, odamlar sonini to'g'ri kiriting.");
+    
     setBusy(true);
     setErr("");
     try {
@@ -171,11 +174,18 @@ export default function BarberNavbar() {
         return;
       }
       const s = SERVICES[svc];
-      latest[modal.time] = { ism: ism.trim(), tel: tel.trim(), xizmat: s.name, narx: s.price, ts: Date.now() };
+      latest[modal.time] = { 
+        ism: ism.trim(), 
+        tel: tel.trim(), 
+        odamSoni: Number(odamSoni),
+        xizmat: s.name, 
+        narx: s.price, 
+        ts: Date.now() 
+      };
       await saveDay(date, latest);
       setBookings(latest);
       setToast(`Band qilindi! ✂️ ${dateLabel}, soat ${modal.time}`);
-      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${modal.time}`);
+      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n👥 Odamlar soni: <b>${odamSoni} kishi</b>\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${modal.time}`);
       close();
     } catch (e) {
       setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
@@ -303,6 +313,21 @@ export default function BarberNavbar() {
             <label style={labelStyle}>Telefon raqamingiz</label>
             <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 90 123 45 67" />
           </div>
+
+          {/* Nechta odam kelishi */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Nechta odam kelasizlar?</label>
+            <input 
+              style={inputStyle} 
+              type="number" 
+              min="1" 
+              max="10" 
+              value={odamSoni} 
+              onChange={(e) => setOdamSoni(e.target.value)} 
+              placeholder="1" 
+            />
+          </div>
+
           <label style={labelStyle}>Xizmat turi</label>
           {SERVICES.map((s, i) => (
             <div key={s.name} onClick={() => setSvc(i)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 8, cursor: "pointer", fontSize: 14, border: `1px solid ${i === svc ? C.gold : "rgba(243,237,227,0.15)"}`, background: i === svc ? "rgba(201,162,39,0.1)" : "transparent" }}>
