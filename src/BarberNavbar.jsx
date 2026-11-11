@@ -5,13 +5,13 @@ const TELEGRAM_BOT_TOKEN = "8952129410:AAGCxdTKV9F9_Vb40vftG1qCSULsVBPiOMc";
 const TELEGRAM_CHAT_ID = "-5012396870";
 const BARBER_PHONE = "886446766"; // Sartaroshning maxsus raqami
 
-// ====== XIZMATLAR VA NARXLAR ======
+// ====== XIZMATLAR VA QIZIQARLI TA'RIFLAR (shu yerdan o'zgartiring) ======
 const SERVICES = [
-  { name: "Soch olish", price: 100000 },
-  { name: "Yosh bolalarga soch olish", price: 70000 },
-  { name: "Kuyov bola style", price: 100, cur: "$" },
-  { name: "Soch bo'yash", price: 50000 },
-  { name: "Jingalak soch qilish", price: 500000 },
+  { name: "Soch olish", desc: "Yuz tuzilishingizga mos ideal imidj 🔥" },
+  { name: "Yosh bolalarga soch olish", desc: "Kichkintoylar uchun zamonaviy va qulay stilar 😎" },
+  { name: "Kuyov bola style", desc: "Unutilmas kuningizda mukammal ko'rinish 👑" },
+  { name: "Soch bo'yash", desc: "Tabiiy ko'rinish va sifatli ranglar uyg'unligi ✨" },
+  { name: "Jingalak soch qilish", desc: "Trenddagi uzoq saqlanuvchi perm stili ⚡" },
 ];
 
 const DOW = ["Yak", "Dush", "Sesh", "Chor", "Pay", "Jum", "Shan"];
@@ -30,7 +30,6 @@ const mono = "'Space Mono', monospace";
 
 const pad = (n) => (n < 10 ? "0" + n : "" + n);
 const dateKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const priceText = (s) => (!s.price ? "Narxi keyinroq" : s.cur === "$" ? "$" + s.price : s.price.toLocaleString("ru-RU") + " so'm");
 const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const digits = (t) => String(t).replace(/\D/g, "").slice(-9);
 
@@ -243,13 +242,12 @@ export default function BarberNavbar() {
         tel: tel.trim(), 
         odamSoni: Number(odamSoni),
         xizmat: s.name, 
-        narx: s.price, 
         ts: Date.now() 
       };
       await saveDay(date, latest);
       setBookings(latest);
       setToast(`Band qilindi! ✂️ ${dateLabel}, soat ${finalTime}`);
-      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n👥 Odamlar soni: <b>${odamSoni} kishi</b>\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${finalTime}`);
+      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n👥 Odamlar soni: <b>${odamSoni} kishi</b>\n💈 Xizmat: <b>${esc(s.name)}</b>\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${finalTime}`);
       close();
     } catch (e) {
       setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
@@ -266,7 +264,6 @@ export default function BarberNavbar() {
       const b = latest[modal.time];
       if (!b) { setBookings(latest); return close(); }
       const inputDigits = digits(tel);
-      // Mijozning o'z raqami yoki sartaroshning raqami bo'lsa bekor qila oladi
       if (!inputDigits || (inputDigits !== digits(b.tel) && inputDigits !== BARBER_PHONE)) {
         return setErr("Telefon raqam navbat olgan raqamga mos kelmadi.");
       }
@@ -301,13 +298,13 @@ export default function BarberNavbar() {
           </div>
         </div>
 
-        {/* Prices */}
-        <SectionLabel num="✂" title="Xizmatlar va narxlar" />
+        {/* Services */}
+        <SectionLabel num="✂" title="Bizning xizmatlar" />
         <div style={{ background: C.card, border: "1px solid rgba(243,237,227,0.1)", borderRadius: 12, padding: "6px 16px", marginBottom: 28 }}>
           {SERVICES.map((s, i) => (
-            <div key={s.name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "11px 0", fontSize: 14.5, borderBottom: i < SERVICES.length - 1 ? "1px dashed rgba(243,237,227,0.14)" : "none" }}>
-              <span>{s.name}</span>
-              <b style={{ fontFamily: mono, fontSize: 13, color: C.goldB, whiteSpace: "nowrap" }}>{priceText(s)}</b>
+            <div key={s.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "12px 0", fontSize: 14.5, borderBottom: i < SERVICES.length - 1 ? "1px dashed rgba(243,237,227,0.14)" : "none" }}>
+              <span style={{ fontWeight: 600 }}>{s.name}</span>
+              <span style={{ fontSize: 13, color: C.goldB, fontStyle: "italic" }}>{s.desc}</span>
             </div>
           ))}
         </div>
@@ -337,7 +334,7 @@ export default function BarberNavbar() {
         {!loading && isDayOff ? (
           <div style={{ background: C.redBg, border: `1px solid ${C.redBd}`, borderRadius: 12, padding: "28px 18px", textAlign: "center" }}>
             <div style={{ fontFamily: serif, fontSize: 21, fontWeight: 700, color: "#e3b5ae", marginBottom: 6 }}>
-              🛑 Bu kun sartarosh dam oladi
+              🛑 Bu kun sartarosh dam oladi, yoki ishi chiqib qolgan bulishi mumkin.
             </div>
             <p style={{ fontSize: 13.5, color: C.dim, marginBottom: 18 }}>
               Iltimos, navbat olish uchun boshqa sanani tanlang.
@@ -460,9 +457,9 @@ export default function BarberNavbar() {
 
           <label style={labelStyle}>Xizmat turi</label>
           {SERVICES.map((s, i) => (
-            <div key={s.name} onClick={() => setSvc(i)} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 8, marginBottom: 8, cursor: "pointer", fontSize: 14, border: `1px solid ${i === svc ? C.gold : "rgba(243,237,227,0.15)"}`, background: i === svc ? "rgba(201,162,39,0.1)" : "transparent" }}>
-              <span>{s.name}</span>
-              <b style={{ fontFamily: mono, fontSize: 13, color: C.goldB, whiteSpace: "nowrap" }}>{priceText(s)}</b>
+            <div key={s.name} onClick={() => setSvc(i)} style={{ padding: "10px 12px", borderRadius: 8, marginBottom: 8, cursor: "pointer", border: `1px solid ${i === svc ? C.gold : "rgba(243,237,227,0.15)"}`, background: i === svc ? "rgba(201,162,39,0.1)" : "transparent" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.cream }}>{s.name}</div>
+              <div style={{ fontSize: 12, color: C.goldB, marginTop: 3 }}>{s.desc}</div>
             </div>
           ))}
           {err && <div style={{ color: "#e07a6c", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
@@ -490,7 +487,7 @@ export default function BarberNavbar() {
         </Modal>
       )}
 
-      {/* Dam olish kunini qayta ochish modali (Placeholder yashirildi) */}
+      {/* Dam olish kunini qayta ochish modali */}
       {modal?.type === "unblockDay" && (
         <Modal onClose={close} title="Kunni qayta ochish" sub={dateLabel}>
           <label style={labelStyle}>Sartarosh telefon raqamini kiriting</label>
