@@ -3,6 +3,7 @@ import { Scissors } from "lucide-react";
 
 const TELEGRAM_BOT_TOKEN = "8952129410:AAGCxdTKV9F9_Vb40vftG1qCSULsVBPiOMc";
 const TELEGRAM_CHAT_ID = "-5012396870";
+const BARBER_PHONE = "886446766"; // Sartaroshning maxsus raqami
 
 // ====== XIZMATLAR VA NARXLAR ======
 const SERVICES = [
@@ -127,7 +128,7 @@ export default function BarberNavbar() {
   const [date, setDate] = useState(dates[0]);
   const [bookings, setBookings] = useState({});
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null);
+  const [modal, setModal] = useState(null); // { type: "book" | "cancel" | "unblockDay", time }
   const [ism, setIsm] = useState("");
   const [tel, setTel] = useState("");
   const [odamSoni, setOdamSoni] = useState(1);
@@ -155,10 +156,13 @@ export default function BarberNavbar() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const isDayOff = !!bookings["__DAM_OLISH__"];
+  const isBarber = digits(tel) === BARBER_PHONE;
+
   // Standart soatlar va mijozlar o'zi qo'shgan vaqtlarni birlashtirib, tartiblash
   const allTimes = useMemo(() => {
     const defaultTimes = HOURS.map((h) => pad(h) + ":00");
-    const bookedTimes = Object.keys(bookings);
+    const bookedTimes = Object.keys(bookings).filter((k) => k !== "__DAM_OLISH__");
     const merged = Array.from(new Set([...defaultTimes, ...bookedTimes]));
     return merged.sort();
   }, [bookings]);
@@ -171,6 +175,48 @@ export default function BarberNavbar() {
   };
   const close = () => setModal(null);
 
+  // Sartarosh butun kunni dam olish kuni qilishi
+  async function setDayOff() {
+    if (!isBarber) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const latest = await loadDay(date);
+      latest["__DAM_OLISH__"] = { ts: Date.now() };
+      await saveDay(date, latest);
+      setBookings(latest);
+      setToast(`🛑 ${dateLabel} — Dam olish kuni deb belgilandi!`);
+      sendTelegram(`🛑 <b>Dam olish kuni!</b>\n\n📅 Sana: <b>${date.getDate()}-${MON_FULL[date.getMonth()]}</b>\nSartarosh bu kunni dam olish kuni sifatida yopdi.`);
+      close();
+    } catch (e) {
+      setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Sartarosh dam olish kunini bekor qilib, kunni qayta ochishi
+  async function removeDayOff() {
+    if (digits(tel) !== BARBER_PHONE) {
+      return setErr("Faqat sartarosh o'z raqami orqali kunni qayta ocha oladi.");
+    }
+    setBusy(true);
+    setErr("");
+    try {
+      const latest = await loadDay(date);
+      delete latest["__DAM_OLISH__"];
+      await saveDay(date, latest);
+      setBookings(latest);
+      setToast(`✅ ${dateLabel} yana ish kuni sifatida ochildi!`);
+      sendTelegram(`✅ <b>Kun qayta ochildi!</b>\n\n📅 Sana: <b>${date.getDate()}-${MON_FULL[date.getMonth()]}</b> yana navbat olish uchun ochiq.`);
+      close();
+    } catch (e) {
+      setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function book() {
     const finalTime = customTime.trim();
     if (!ism.trim() || !tel.trim()) return setErr("Iltimos, ism va telefon raqamingizni kiriting.");
@@ -181,6 +227,11 @@ export default function BarberNavbar() {
     setErr("");
     try {
       const latest = await loadDay(date);
+      if (latest["__DAM_OLISH__"]) {
+        setBookings(latest);
+        setErr("Kechirasiz, bu kun dam olish kuni deb belgilangan.");
+        return;
+      }
       if (latest[finalTime]) {
         setBookings(latest);
         setErr(`Kechirasiz, soat ${finalTime} allaqachon band qilingan. Boshqa vaqt tanlang.`);
@@ -214,7 +265,11 @@ export default function BarberNavbar() {
       const latest = await loadDay(date);
       const b = latest[modal.time];
       if (!b) { setBookings(latest); return close(); }
-      if (!digits(tel) || digits(tel) !== digits(b.tel)) return setErr("Telefon raqam navbat olgan raqamga mos kelmadi.");
+      const inputDigits = digits(tel);
+      // Mijozning o'z raqami yoki sartaroshning raqami bo'lsa bekor qila oladi
+      if (!inputDigits || (inputDigits !== digits(b.tel) && inputDigits !== BARBER_PHONE)) {
+        return setErr("Telefon raqam navbat olgan raqamga mos kelmadi.");
+      }
       delete latest[modal.time];
       await saveDay(date, latest);
       setBookings(latest);
@@ -277,46 +332,65 @@ export default function BarberNavbar() {
         <div style={{ fontFamily: serif, fontSize: 17, color: C.goldB, marginBottom: 16 }}>
           {dateLabel}, {DOW[date.getDay()]}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 12 }}>
-          {allTimes.map((t) => {
-            const booked = !loading && !!bookings[t];
-            const free = !loading && !booked;
-            return (
+
+        {/* Agar Dam olish kuni bo'lsa maxsus xabar chiqadi */}
+        {!loading && isDayOff ? (
+          <div style={{ background: C.redBg, border: `1px solid ${C.redBd}`, borderRadius: 12, padding: "28px 18px", textAlign: "center" }}>
+            <div style={{ fontFamily: serif, fontSize: 21, fontWeight: 700, color: "#e3b5ae", marginBottom: 6 }}>
+              🛑 Bu kun sartarosh dam oladi
+            </div>
+            <p style={{ fontSize: 13.5, color: C.dim, marginBottom: 18 }}>
+              Iltimos, navbat olish uchun boshqa sanani tanlang.
+            </p>
+            <button
+              onClick={() => open("unblockDay", "")}
+              style={{ background: "transparent", border: `1px solid ${C.redBd}`, color: "#e3b5ae", padding: "8px 16px", borderRadius: 8, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Sartarosh bo'lsa: kunni qayta ochish
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 12 }}>
+            {allTimes.map((t) => {
+              const booked = !loading && !!bookings[t];
+              const free = !loading && !booked;
+              return (
+                <div
+                  key={t}
+                  onClick={() => !loading && open(booked ? "cancel" : "book", t)}
+                  style={{
+                    position: "relative", overflow: "hidden", borderRadius: 10, padding: "16px 6px 12px", textAlign: "center",
+                    cursor: loading ? "default" : "pointer",
+                    background: loading ? "#2E2B27" : booked ? C.redBg : C.greenBg,
+                    border: `1px solid ${loading ? "rgba(243,237,227,0.08)" : booked ? C.redBd : C.greenBd}`,
+                  }}
+                >
+                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: loading ? "transparent" : booked ? C.red : C.green }} />
+                  <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: booked ? "#e3b5ae" : C.cream }}>{t}</div>
+                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: loading ? C.dim : booked ? C.red : C.green }}>
+                    {loading ? "..." : free ? "Bo'sh" : "Band"}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Mijoz o'zi vaqt qo'shishi uchun tugma */}
+            {!loading && (
               <div
-                key={t}
-                onClick={() => !loading && open(booked ? "cancel" : "book", t)}
+                onClick={() => open("book", "")}
                 style={{
                   position: "relative", overflow: "hidden", borderRadius: 10, padding: "16px 6px 12px", textAlign: "center",
-                  cursor: loading ? "default" : "pointer",
-                  background: loading ? "#2E2B27" : booked ? C.redBg : C.greenBg,
-                  border: `1px solid ${loading ? "rgba(243,237,227,0.08)" : booked ? C.redBd : C.greenBd}`,
+                  cursor: "pointer", background: "rgba(201,162,39,0.08)", border: `1px dashed ${C.gold}`,
                 }}
               >
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: loading ? "transparent" : booked ? C.red : C.green }} />
-                <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: booked ? "#e3b5ae" : C.cream }}>{t}</div>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: loading ? C.dim : booked ? C.red : C.green }}>
-                  {loading ? "..." : free ? "Bo'sh" : "Band"}
+                <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.goldB }}>+ Vaqt</div>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: C.gold }}>
+                  Tanlash
                 </div>
               </div>
-            );
-          })}
-
-          {/* Mijoz o'zi vaqt qo'shishi uchun tugma */}
-          {!loading && (
-            <div
-              onClick={() => open("book", "")}
-              style={{
-                position: "relative", overflow: "hidden", borderRadius: 10, padding: "16px 6px 12px", textAlign: "center",
-                cursor: "pointer", background: "rgba(201,162,39,0.08)", border: `1px dashed ${C.gold}`,
-              }}
-            >
-              <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.goldB }}>+ Vaqt</div>
-              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: C.gold }}>
-                Tanlash
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Legend */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginTop: 22, paddingTop: 18, borderTop: "1px solid rgba(243,237,227,0.1)", fontSize: 12.5, color: C.dim }}>
@@ -342,7 +416,24 @@ export default function BarberNavbar() {
             <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 90 123 45 67" />
           </div>
 
-          {/* Vaqt va Odam soni yonma-yon yoki ketma-ket */}
+          {/* Agar sartarosh o'z raqamini kiritsa, butun kunni dam olish kuni qilish tugmasi chiqadi */}
+          {isBarber && (
+            <div style={{ background: C.redBg, border: `1px solid ${C.redBd}`, borderRadius: 10, padding: 12, marginBottom: 16 }}>
+              <div style={{ fontSize: 12.5, color: "#e3b5ae", marginBottom: 8, fontWeight: 600 }}>
+                ✂️ Sartarosh rejimi aniqlandi
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={setDayOff}
+                style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: C.red, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                🛑 Shu kunni Dam olish kuni qilish (Yopish)
+              </button>
+            </div>
+          )}
+
+          {/* Vaqt va Odam soni */}
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Kelish vaqti</label>
@@ -394,6 +485,21 @@ export default function BarberNavbar() {
             <button style={btn("transparent", C.dim, "1px solid rgba(243,237,227,0.2)")} onClick={close}>Yopish</button>
             <button style={{ ...btn(C.red, "#fff"), opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={cancel}>
               Bekor qilish
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Dam olish kunini qayta ochish modali (Placeholder yashirildi) */}
+      {modal?.type === "unblockDay" && (
+        <Modal onClose={close} title="Kunni qayta ochish" sub={dateLabel}>
+          <label style={labelStyle}>Sartarosh telefon raqamini kiriting</label>
+          <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 __ ___ __ __" />
+          {err && <div style={{ color: "#e07a6c", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            <button style={btn("transparent", C.dim, "1px solid rgba(243,237,227,0.2)")} onClick={close}>Yopish</button>
+            <button style={{ ...btn(C.green, "#fff"), opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={removeDayOff}>
+              Kunni ochish
             </button>
           </div>
         </Modal>
