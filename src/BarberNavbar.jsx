@@ -78,6 +78,7 @@ async function sendTelegram(text) {
 const inputStyle = {
   width: "100%", background: C.bg, border: "1px solid rgba(243,237,227,0.15)", borderRadius: 8,
   padding: "11px 12px", color: C.cream, fontSize: 14.5, outline: "none", fontFamily: "inherit",
+  boxSizing: "border-box",
 };
 const labelStyle = {
   display: "block", fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.08em",
@@ -103,7 +104,7 @@ function Modal({ onClose, title, sub, children }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ position: "fixed", inset: 0, background: "rgba(10,9,8,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}
     >
-      <div style={{ width: "100%", maxWidth: 360, maxHeight: "100%", overflowY: "auto", background: C.card, border: "1px solid rgba(201,162,39,0.35)", borderRadius: 14, padding: "26px 24px 22px" }}>
+      <div style={{ width: "100%", maxWidth: 360, maxHeight: "100%", overflowY: "auto", background: C.card, border: "1px solid rgba(201,162,39,0.35)", borderRadius: 14, padding: "26px 24px 22px", boxSizing: "border-box" }}>
         <h3 style={{ fontFamily: serif, fontSize: 20, marginBottom: 4 }}>{title}</h3>
         <div style={{ fontFamily: mono, fontSize: 13, color: C.goldB, marginBottom: 20 }}>{sub}</div>
         {children}
@@ -130,6 +131,7 @@ export default function BarberNavbar() {
   const [ism, setIsm] = useState("");
   const [tel, setTel] = useState("");
   const [odamSoni, setOdamSoni] = useState(1);
+  const [customTime, setCustomTime] = useState("");
   const [svc, setSvc] = useState(0);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -153,28 +155,39 @@ export default function BarberNavbar() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Standart soatlar va mijozlar o'zi qo'shgan vaqtlarni birlashtirib, tartiblash
+  const allTimes = useMemo(() => {
+    const defaultTimes = HOURS.map((h) => pad(h) + ":00");
+    const bookedTimes = Object.keys(bookings);
+    const merged = Array.from(new Set([...defaultTimes, ...bookedTimes]));
+    return merged.sort();
+  }, [bookings]);
+
   const dateLabel = `${date.getDate()} ${MON_FULL[date.getMonth()]}`;
   const open = (type, time) => {
     setModal({ type, time });
+    setCustomTime(time || "12:30");
     setIsm(""); setTel(""); setOdamSoni(1); setSvc(0); setErr("");
   };
   const close = () => setModal(null);
 
   async function book() {
+    const finalTime = customTime.trim();
     if (!ism.trim() || !tel.trim()) return setErr("Iltimos, ism va telefon raqamingizni kiriting.");
+    if (!finalTime) return setErr("Iltimos, vaqtni tanlang.");
     if (!odamSoni || odamSoni < 1) return setErr("Iltimos, odamlar sonini to'g'ri kiriting.");
     
     setBusy(true);
     setErr("");
     try {
       const latest = await loadDay(date);
-      if (latest[modal.time]) {
+      if (latest[finalTime]) {
         setBookings(latest);
-        setErr("Kechirasiz, bu vaqt hozirgina band qilindi. Boshqa vaqtni tanlang.");
+        setErr(`Kechirasiz, soat ${finalTime} allaqachon band qilingan. Boshqa vaqt tanlang.`);
         return;
       }
       const s = SERVICES[svc];
-      latest[modal.time] = { 
+      latest[finalTime] = { 
         ism: ism.trim(), 
         tel: tel.trim(), 
         odamSoni: Number(odamSoni),
@@ -184,8 +197,8 @@ export default function BarberNavbar() {
       };
       await saveDay(date, latest);
       setBookings(latest);
-      setToast(`Band qilindi! ✂️ ${dateLabel}, soat ${modal.time}`);
-      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n👥 Odamlar soni: <b>${odamSoni} kishi</b>\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${modal.time}`);
+      setToast(`Band qilindi! ✂️ ${dateLabel}, soat ${finalTime}`);
+      sendTelegram(`✂️ <b>Yangi navbat!</b>\n\n👤 Mijoz: <b>${esc(ism.trim())}</b>\n📞 Telefon: ${esc(tel.trim())}\n👥 Odamlar soni: <b>${odamSoni} kishi</b>\n💈 Xizmat: ${esc(s.name)} — ${priceText(s)}\n📅 Sana: ${date.getDate()}-${MON_FULL[date.getMonth()]}\n🕐 Vaqt: ${finalTime}`);
       close();
     } catch (e) {
       setErr("Xatolik yuz berdi. Qaytadan urinib ko'ring.");
@@ -265,8 +278,7 @@ export default function BarberNavbar() {
           {dateLabel}, {DOW[date.getDay()]}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 12 }}>
-          {HOURS.map((h) => {
-            const t = pad(h) + ":00";
+          {allTimes.map((t) => {
             const booked = !loading && !!bookings[t];
             const free = !loading && !booked;
             return (
@@ -288,11 +300,27 @@ export default function BarberNavbar() {
               </div>
             );
           })}
+
+          {/* Mijoz o'zi vaqt qo'shishi uchun tugma */}
+          {!loading && (
+            <div
+              onClick={() => open("book", "")}
+              style={{
+                position: "relative", overflow: "hidden", borderRadius: 10, padding: "16px 6px 12px", textAlign: "center",
+                cursor: "pointer", background: "rgba(201,162,39,0.08)", border: `1px dashed ${C.gold}`,
+              }}
+            >
+              <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: C.goldB }}>+ Vaqt</div>
+              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 5, fontWeight: 700, color: C.gold }}>
+                Tanlash
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Legend */}
-        <div style={{ display: "flex", gap: 20, marginTop: 22, paddingTop: 18, borderTop: "1px solid rgba(243,237,227,0.1)", fontSize: 12.5, color: C.dim }}>
-          {[[C.green, "Bo'sh vaqt"], [C.red, "Band qilingan (bosib bekor qilish mumkin)"]].map(([c, l]) => (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 20, marginTop: 22, paddingTop: 18, borderTop: "1px solid rgba(243,237,227,0.1)", fontSize: 12.5, color: C.dim }}>
+          {[[C.green, "Bo'sh vaqt"], [C.red, "Band qilingan (bosib bekor qilish mumkin)"], [C.gold, "O'zingizga qulay boshqa vaqt tanlash"]].map(([c, l]) => (
             <div key={l} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: c }} />
               {l}
@@ -304,7 +332,7 @@ export default function BarberNavbar() {
 
       {/* Book modal */}
       {modal?.type === "book" && (
-        <Modal onClose={close} title="Navbatni tasdiqlash" sub={`${dateLabel} — ${modal.time}`}>
+        <Modal onClose={close} title="Navbatni tasdiqlash" sub={`${dateLabel} — ${customTime || "Vaqtni tanlang"}`}>
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Ismingiz</label>
             <input style={inputStyle} value={ism} onChange={(e) => setIsm(e.target.value)} placeholder="Masalan: Aziz" />
@@ -314,18 +342,29 @@ export default function BarberNavbar() {
             <input style={inputStyle} type="tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+998 90 123 45 67" />
           </div>
 
-          {/* Nechta odam kelishi */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>Nechta odam kelasizlar?</label>
-            <input 
-              style={inputStyle} 
-              type="number" 
-              min="1" 
-              max="10" 
-              value={odamSoni} 
-              onChange={(e) => setOdamSoni(e.target.value)} 
-              placeholder="1" 
-            />
+          {/* Vaqt va Odam soni yonma-yon yoki ketma-ket */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Kelish vaqti</label>
+              <input
+                style={{ ...inputStyle, colorScheme: "dark" }}
+                type="time"
+                value={customTime}
+                onChange={(e) => setCustomTime(e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Nechta odam?</label>
+              <input
+                style={inputStyle}
+                type="number"
+                min="1"
+                max="10"
+                value={odamSoni}
+                onChange={(e) => setOdamSoni(e.target.value)}
+                placeholder="1"
+              />
+            </div>
           </div>
 
           <label style={labelStyle}>Xizmat turi</label>
